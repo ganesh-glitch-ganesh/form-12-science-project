@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Mage Academy: Science Edition</title>
+    <style>
+        :root {
+            --panel-bg: rgba(0, 0, 0, 0.9);
+            --gold: #f1c40f;
+            --fire-color: #e67e22;
+            --ice-color: #3498db;
+        }
+
+        body { background: #1a1a1a; color: white; font-family: 'Courier New', monospace; margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
+
+        #game-window {
+            width: 850px; height: 650px;
+            border: 6px solid #444;
+            position: relative;
+            background: #2c3e50;
+        }
+
+        .scene { display: none; width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
+        .active { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+
+        .panel { background: var(--panel-bg); padding: 25px; border: 3px solid var(--gold); border-radius: 10px; text-align: center; max-width: 80%; }
+        
+        button { padding: 12px 20px; margin: 8px; cursor: pointer; font-family: inherit; font-weight: bold; border-radius: 5px; border: none; transition: 0.2s; }
+        button:hover { transform: scale(1.05); }
+        .btn-main { background: var(--gold); color: black; }
+        .btn-choice { background: #444; color: white; border: 1px solid var(--gold); width: 200px; }
+        .btn-choice:hover { background: #666; }
+
+        /* --- BATTLE SYSTEM --- */
+        #battle-screen { background: linear-gradient(to bottom, #1a0a0a 70%, #3d1414 70%); }
+        .sprite { width: 250px; height: 250px; position: absolute; bottom: 180px; background-size: contain; background-repeat: no-repeat; background-position: center; image-rendering: pixelated; }
+        #player-sprite { left: 50px; }
+        #enemy-sprite { right: 50px; }
+        
+        .projectile { position: absolute; z-index: 99; display: none; }
+        .fire-ball { width: 45px; height: 45px; border-radius: 50%; background: orange; box-shadow: 0 0 25px red; }
+        .ice-line { width: 60px; height: 6px; background: #fff; box-shadow: 0 0 15px var(--ice-color); }
+
+        .hp-box { width: 180px; height: 20px; background: #333; border: 2px solid white; position: absolute; top: 40px; }
+        .hp-fill { height: 100%; background: #2ecc71; width: 100%; transition: 0.4s; }
+
+        @keyframes shoot { 0% { left: 250px; } 100% { left: 550px; } }
+        .shake { animation: shake 0.4s; }
+        @keyframes shake { 0%, 100% { transform: translate(0,0); } 25% { transform: translate(-8px,0); } 75% { transform: translate(8px,0); } }
+        
+        #battle-ui { position: absolute; bottom: 0; width: 100%; height: 200px; background: rgba(0,0,0,0.85); border-top: 3px solid var(--gold); display: flex; flex-direction: column; align-items: center; padding-top: 10px; }
+		
+		/* Special Purple Projectile for the Headmaster */
+.headmaster-magic {
+    width: 60px;
+    height: 8px;
+    background: #fff;
+    box-shadow: 0 0 20px #9b59b6, 0 0 10px #8e44ad;
+    filter: hue-rotate(0deg); /* We will handle color via classes */
+    border-radius: 10px;
+}
+		
+    </style>
+</head>
+<body>
+
+<div id="game-window">
+    
+    <div id="scene-login" class="scene active">
+        <div class="panel">
+            <h2>SCIENCE MAGE REGISTRATION</h2>
+            <input type="text" id="player-name-input" placeholder="Enter Name..." style="padding:10px; margin-bottom:10px;">
+            <div>
+                <button style="background:var(--fire-color); color:white" onclick="startGame('fire')">FIRE SCHOOL</button>
+                <button style="background:var(--ice-color); color:white" onclick="startGame('ice')">ICE SCHOOL</button>
+            </div>
+        </div>
+    </div>
+
+<div id="scene-commons" class="scene">
+    <div class="stats-bar">
+        <span id="stat-name">Mage</span>
+        <span id="stat-lvl">Level: 1</span>
+        <span id="stat-hp">HP: 100/100</span>
+    </div>
+    <div class="panel">
+        <h1>The Academy Grounds</h1>
+        <button class="btn-main" onclick="goTo('battle')">Explore (Random Battle)</button>
+        <button class="btn-main" onclick="healPlayer()">Hot Spring (Heal)</button>
+        <button class="btn-main" style="background: #8e44ad; border: 2px solid white;" onclick="startHeadmasterBattle()">CHALLENGE HEADMASTER</button>
+    </div>
+</div>
+
+    <div id="scene-battle" class="scene" style="background: #1a0a0a;">
+        <div class="hp-box" style="left:50px;"><div id="p-hp" class="hp-fill"></div></div>
+        <div class="hp-box" style="right:50px;"><div id="e-hp" class="hp-fill"></div></div>
+        
+        <div id="player-sprite" class="sprite"></div>
+        <div id="enemy-sprite" class="sprite"></div>
+        <div id="attack-container"></div>
+
+        <div id="battle-ui">
+            <div id="q-text" style="padding: 0 20px; text-align: center; font-size: 1.1rem; margin-bottom: 10px; color: var(--gold);">Question Loading...</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+                <button class="btn-choice" onclick="checkAns('A')">A. <span id="optA"></span></button>
+                <button class="btn-choice" onclick="checkAns('B')">B. <span id="optB"></span></button>
+                <button class="btn-choice" onclick="checkAns('C')">C. <span id="optC"></span></button>
+                <button class="btn-choice" onclick="checkAns('D')">D. <span id="optD"></span></button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const questions = [
+        { q: "Which is an abiotic factor in an ecosystem?", a: "C", opts: ["Bacteria", "Fungi", "Temperature", "Grass"] },
+        { q: "A group of organisms of the same species in a habitat is...", a: "B", opts: ["Community", "Population", "Ecosystem", "Species"] },
+        { q: "Process allowing green plants to act as producers?", a: "C", opts: ["Respiration", "Decomposition", "Photosynthesis", "Transpiration"] },
+        { q: "Who occupies the second trophic level?", a: "B", opts: ["Producer", "Primary consumer", "Secondary consumer", "Decomposer"] },
+        { q: "Primary role of fungi and bacteria?", a: "C", opts: ["Hunt prey", "Produce food", "Break down dead matter", "Provide oxygen"] },
+        { q: "Which represents a 'Community'?", a: "C", opts: ["Single tiger", "All zebras", "Various populations together", "Physical environment"] },
+        { q: "What happens to energy moving up trophic levels?", a: "C", opts: ["Increases", "Stays same", "Decreases", "Disappears"] },
+        { q: "Interaction of an 'Epiphyte' on a large tree?", a: "C", opts: ["Parasitism", "Mutualism", "Commensalism", "Competition"] },
+        { q: "Interaction where both organisms benefit?", a: "B", opts: ["Commensalism", "Mutualism", "Parasitism", "Prey-predator"] },
+        { q: "A tapeworm inside a human is:", a: "C", opts: ["Mutualism", "Saprophytism", "Parasitism", "Commensalism"] },
+        { q: "Method to maintain balanced population?", a: "B", opts: ["Increase birth", "Biological control", "Deforestation", "Pollution"] },
+        { q: "Gas released by plants and used by animals?", a: "C", opts: ["CO2", "Nitrogen", "Oxygen", "Hydrogen"] },
+        { q: "Main source of energy for almost all ecosystems?", a: "C", opts: ["Water", "Soil", "The Sun", "Wind"] },
+        { q: "Which of the following is a 'Secondary Consumer'?", a: "B", opts: ["Caterpillar eating leaf", "Bird eating caterpillar", "Eagle eating bird", "Cow eating grass"] },
+        { q: "One organism hunts and kills another?", a: "C", opts: ["Competition", "Mutualism", "Prey-Predator", "Parasitism"] },
+        { q: "Cycle with evaporation and precipitation?", a: "C", opts: ["Carbon cycle", "Oxygen cycle", "Water cycle", "Nitrogen cycle"] },
+        { q: "What is the definition of 'Niche'?", a: "B", opts: ["Place where it lives", "Role/function in habitat", "Group of populations", "Physical factors"] },
+        { q: "Human activity that preserves nature?", a: "C", opts: ["Logging", "Chemical pesticides", "Reforestation", "Overfishing"] },
+        { q: "If snakes decrease, effect on frogs (prey)?", a: "B", opts: ["Frogs decrease", "Frogs increase", "Frogs stay same", "Frogs eat snakes"] },
+        { q: "Characteristic of a balanced ecosystem?", a: "B", opts: ["Only producers", "Cycle/Energy flow continuous", "Predators eat all prey", "No abiotic factors"] }
+    ];
+
+    const monsterDatabase = {
+        lvl1: ["level1monsterpose1.jpeg", "level1monsterpose2.jpeg", "level1monsterpose1.jpeg"],
+        lvl2: ["level2monsterpose1.jpeg", "level2monsterpose2.jpeg", "level2monsterpose1.jpeg"],
+        lvl3: ["level3monsterpose1.jpeg", "level3monsterpose2.jpeg", "level3monsterpose1.jpeg"],
+        overlord: ["monster1.jpeg", "monster2.jpeg", "monster3.jpeg"],
+        headmaster: ["head1.jpeg", "head2.jpeg", "head3.jpeg"]
+    };
+
+    let player = { name: "", school: "", level: 1, hp: 100, maxHp: 100, poses: [] };
+    let currentEnemyPoses = [];
+    let enemyMaxHp = 100, enemyCurrentHp = 100;
+    let currentQ = null;
+    let frameToggle = true, isAttacking = false, isTurnWaiting = false, isBossFight = false;
+
+    function goTo(id) {
+        document.querySelectorAll('.scene').forEach(s => s.classList.remove('active'));
+        document.getElementById('scene-'+id).classList.add('active');
+        if(id === 'battle') startBattle(isBossFight);
+    }
+
+    function startGame(school) {
+        player.name = document.getElementById('player-name-input').value || "Mage";
+        player.school = school;
+        player.poses = (school === 'fire') 
+            ? ["fire wizard pose 1.jpg", "fire wizard pose 2.jpg", "fire wizard pose 3.jpg"]
+            : ["icewizard1.jpeg", "icewizard2.jpeg", "icewizard3.jpeg"];
+        goTo('commons');
+    }
+
+    function startHeadmasterBattle() {
+        isBossFight = true;
+        goTo('battle');
+    }
+
+    function startBattle(isBoss) {
+        isTurnWaiting = false;
+        if (isBoss) {
+            currentEnemyPoses = monsterDatabase.headmaster;
+            enemyMaxHp = 2000;
+            document.getElementById('q-text').innerText = "The Headmaster: 'Can you handle purple magic?'";
+        } else {
+            isBossFight = false;
+            if (player.level === 1) currentEnemyPoses = monsterDatabase.lvl1;
+            else if (player.level === 2) currentEnemyPoses = monsterDatabase.lvl2;
+            else if (player.level === 3) currentEnemyPoses = monsterDatabase.lvl3;
+            else currentEnemyPoses = monsterDatabase.overlord;
+            enemyMaxHp = 100 * (player.level * 3);
+        }
+        enemyCurrentHp = enemyMaxHp;
+        updateBars();
+        setTimeout(nextQuestion, 1500);
+    }
+
+    function nextQuestion() {
+        if (enemyCurrentHp <= 0 || player.hp <= 0) return;
+        isTurnWaiting = false;
+        currentQ = questions[Math.floor(Math.random() * questions.length)];
+        document.getElementById('q-text').style.color = "var(--gold)";
+        document.getElementById('q-text').innerText = currentQ.q;
+        document.getElementById('optA').innerText = currentQ.opts[0];
+        document.getElementById('optB').innerText = currentQ.opts[1];
+        document.getElementById('optC').innerText = currentQ.opts[2];
+        document.getElementById('optD').innerText = currentQ.opts[3];
+    }
+
+    function checkAns(choice) {
+        if (isTurnWaiting) return;
+        isTurnWaiting = true;
+
+        if(choice === currentQ.a) {
+            enemyCurrentHp -= (60 + (player.level * 20));
+            updateBars();
+            executeAttack('player');
+            
+            setTimeout(() => {
+                if (enemyCurrentHp > 0) {
+                    document.getElementById('q-text').innerText = isBossFight ? "Headmaster: 'Not bad... but try this!'" : "The monster retaliates!";
+                    document.getElementById('q-text').style.color = "#9b59b6";
+                    setTimeout(() => {
+                        player.hp -= 15;
+                        updateBars();
+                        executeAttack('enemy');
+                        setTimeout(nextQuestion, 1000);
+                    }, 1000);
+                } else {
+                    victory();
+                }
+            }, 1000);
+        } else {
+            document.getElementById('q-text').innerText = "Wrong answer! Counter-attack incoming!";
+            document.getElementById('q-text').style.color = "red";
+            setTimeout(() => {
+                player.hp -= 25;
+                updateBars();
+                executeAttack('enemy');
+                if (player.hp <= 0) gameOver(); else setTimeout(nextQuestion, 1000);
+            }, 800);
+        }
+    }
+
+    function victory() {
+        alert("VICTORY! Your stats have grown.");
+        player.level++;
+        player.maxHp += 20; // Player gets tougher
+        player.hp = player.maxHp; 
+        isBossFight = false;
+        goTo('commons');
+    }
+
+    function gameOver() {
+        alert("You have fainted! Visit the Hot Spring to recover.");
+        isBossFight = false;
+        goTo('commons');
+    }
+
+    function updateBars() {
+        let pPercent = (player.hp / player.maxHp) * 100;
+        let ePercent = (enemyCurrentHp / enemyMaxHp) * 100;
+        document.getElementById('p-hp').style.width = pPercent + "%";
+        document.getElementById('e-hp').style.width = ePercent + "%";
+        // Update stats text in Commons and Battle
+        document.querySelectorAll('#stat-lvl').forEach(el => el.innerText = `Level: ${player.level} | HP: ${Math.max(0, player.hp)}/${player.maxHp}`);
+        document.querySelectorAll('#stat-hp').forEach(el => el.innerText = `HP: ${Math.max(0, player.hp)}/${player.maxHp}`);
+    }
+
+    function executeAttack(attacker) {
+    const container = document.getElementById('attack-container');
+    let type = (player.school === 'fire') ? 'fire-ball' : 'ice-line';
+    
+    // Determine how many projectiles to shoot
+    // Player shoots based on level, Enemies/Boss shoot a fixed amount (3)
+    let projectileCount = (attacker === 'player') ? player.level : 3;
+
+    // Change type to purple if it's the Headmaster attacking
+    if(attacker === 'enemy' && isBossFight) type = 'headmaster-magic';
+
+    isAttacking = true;
+    
+    // Set the casting pose
+    if(attacker === 'player') {
+        document.getElementById('player-sprite').style.backgroundImage = `url('${player.poses[2]}')`;
+    } else {
+        document.getElementById('enemy-sprite').style.backgroundImage = `url('${currentEnemyPoses[2]}')`;
+    }
+
+    // LOOP: This creates 1 projectile for every level you have
+    for(let i = 0; i < projectileCount; i++) {
+        setTimeout(() => {
+            let p = document.createElement('div');
+            p.className = 'projectile ' + type;
+            p.style.display = 'block';
+            
+            // OFFSET: This spreads the projectiles out vertically so they don't hide each other
+            // It uses the loop index 'i' to move each one down slightly
+            let verticalOffset = (i * 25) - ( (projectileCount - 1) * 12 ); 
+            p.style.top = (320 + verticalOffset) + "px";
+            
+            p.style.left = (attacker === 'player') ? "250px" : "550px";
+            
+            // Animation direction
+            p.style.animation = (attacker === 'player') ? "shoot 0.5s forwards" : "shoot 0.5s reverse forwards";
+            
+            container.appendChild(p);
+            
+            // Clean up the projectile after animation
+            setTimeout(() => p.remove(), 500);
+        }, i * 100); // This adds a tiny delay between each shot for a "machine gun" feel
+    }
+
+    // Screen shake for impact
+    document.getElementById('game-window').classList.add('shake');
+    setTimeout(() => {
+        document.getElementById('game-window').classList.remove('shake');
+        isAttacking = false;
+    }, 600);
+}
+
+    function healPlayer() {
+        player.hp = player.maxHp;
+        updateBars(); // This refreshes the UI
+        alert("The Hot Spring has restored your vitality! HP is now: " + player.hp);
+    }
+
+    function updateBars() {
+        let pPercent = (player.hp / player.maxHp) * 100;
+        let ePercent = (enemyCurrentHp / enemyMaxHp) * 100;
+
+        // Update the Green Bars
+        const pBar = document.getElementById('p-hp');
+        const eBar = document.getElementById('e-hp');
+        if (pBar) pBar.style.width = pPercent + "%";
+        if (eBar) eBar.style.width = ePercent + "%";
+
+        // Update the Text Stats safely
+        const statLvl = document.getElementById('stat-lvl');
+        const statHp = document.getElementById('stat-hp');
+        
+        const statusString = `Level: ${player.level} | HP: ${Math.max(0, player.hp)}/${player.maxHp}`;
+        
+        if (statLvl) statLvl.innerText = statusString;
+        if (statHp) statHp.innerText = `HP: ${Math.max(0, player.hp)}/${player.maxHp}`;
+    }
+
+    setInterval(() => {
+        if (isAttacking) return;
+        const ps = document.getElementById('player-sprite');
+        const es = document.getElementById('enemy-sprite');
+        if(ps && es && player.poses.length > 0 && currentEnemyPoses.length > 0) {
+            const f = frameToggle ? 0 : 1;
+            ps.style.backgroundImage = `url('${player.poses[f]}')`;
+            es.style.backgroundImage = `url('${currentEnemyPoses[f]}')`;
+            frameToggle = !frameToggle;
+        }
+    }, 800);
+</script>
+</body>
+</html>
